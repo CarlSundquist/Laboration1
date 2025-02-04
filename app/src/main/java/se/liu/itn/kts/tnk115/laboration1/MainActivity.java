@@ -1,7 +1,10 @@
 package se.liu.itn.kts.tnk115.laboration1;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.room.Insert;
+import androidx.room.Room;
 
 import android.Manifest;
 import android.content.Intent;
@@ -19,13 +22,29 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
+
+import java.util.Collections;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private boolean collecting = false;
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
+
+    private GPSDatabase db;
+    //GPSDataDao userDao = db.userDao();
+    private GoogleMap map;
+
+
+
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,10 +53,11 @@ public class MainActivity extends AppCompatActivity {
         
         // Get a FusedLocationProviderClient.
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-
+        db = Room.databaseBuilder(getApplicationContext(), GPSDatabase.class, "database-name").allowMainThreadQueries().build();
         // Update the GUI with the last known location.
         //getLastKnownLocation();
     }
+
 
     public void toggleGps(View view) {
 
@@ -50,6 +70,10 @@ public class MainActivity extends AppCompatActivity {
         } else {
             Log.d("MainActivity", "GPS button clicked, start collecting GPS data.");
             button.setText(R.string.stop_gps);
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+                return;
+            }
             createLocationRequest();
             startCollecting();
         }
@@ -104,6 +128,21 @@ public class MainActivity extends AppCompatActivity {
 
         // TODO: Save into Room database.
 
+        Log.d("MainActivity", "Saving location to database.");
+
+
+        GPSData data = new GPSData();
+        data.latitude = location.getLatitude();
+        data.longitude = location.getLongitude();
+        data.heading = location.getBearing();
+        data.speed = location.getSpeed();
+        data.accuracy = location.getAccuracy();
+
+        //data.timestamp = System.currentTimeMillis();
+        db.userDao().insertAll(data);
+        Log.d("MainActivity", "Saved location to database. Size: " + db.userDao().getFilteredData().size());
+
+
     }
     protected void updateValues(Location location) {
         TextView latitude = (TextView) findViewById(R.id.latitude_value);
@@ -119,6 +158,8 @@ public class MainActivity extends AppCompatActivity {
         speed.setText(String.format("%.2f m/s", location.getSpeed()));
         accuracy.setText(String.format("%.2f m", location.getAccuracy()));
     }
+    
+
 
     protected void startCollecting() {
 
@@ -133,6 +174,7 @@ public class MainActivity extends AppCompatActivity {
                 for (Location location : locationResult.getLocations()) {
                     Log.d("MainActivity", "Updating GUI with current location.");
                     updateValues(location);
+                    saveLocation(location);
                 }
             }
         };

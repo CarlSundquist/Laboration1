@@ -6,15 +6,22 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.material.slider.RangeSlider;
+import com.google.maps.android.heatmaps.HeatmapTileProvider;
+import com.google.maps.android.heatmaps.WeightedLatLng;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.room.Room;
 
 import android.util.Log;
 import android.view.View;
@@ -28,7 +35,9 @@ import java.util.List;
 public class MapActivity extends AppCompatActivity implements OnMapReadyCallback {
 
     private BroadcastReceiver receiver;
-    private GoogleMap map = null;
+    private GoogleMap map;
+
+    private GPSDatabase db;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,7 +47,14 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
         // Get a handle to the fragment and register the callback.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
-        mapFragment.getMapAsync(this);
+
+        if (mapFragment != null) {
+            mapFragment.getMapAsync(this);
+        }
+
+        db = Room.databaseBuilder(getApplicationContext(), GPSDatabase.class, "database-name")
+                .allowMainThreadQueries()
+                .build();
 
 
         Spinner modeSpinner = (Spinner) findViewById(R.id.mode_spinner);
@@ -55,6 +71,8 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
         });
         configureSliders();
     }
+
+
 
     private void configureSliders()
     {
@@ -79,7 +97,11 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
     }
     protected void updateMap(int mode)
     {
-        List<GPSData> data = getData();
+        List<GPSData> data = db.userDao().getFilteredData();
+        Log.d("MapActivity", "Database contains " + data.size() + " entries");
+        for (GPSData gps : data) {
+            Log.d("MapActivity", "Database Entry - Lat: " + gps.latitude + ", Lng: " + gps.longitude + ", Speed: " + gps.speed);
+        }
         if(map != null){
             // Clearing map
             map.clear();
@@ -103,18 +125,66 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
     {
         // TODO: Add points.
         Log.d("MapActivity", "Adding marker");
+        if (data.isEmpty()){
+            Log.d("MapActivity", "Empty data");
+            return;
+        }
+
+        for (GPSData gps : data) {
+            LatLng position = new LatLng(gps.latitude, gps.longitude);
+            map.addMarker(new MarkerOptions()
+                    .position(position)
+                    .title("")
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+            Log.d("MapActivity", "Added marker at Lat: " + gps.latitude + ", Lng: " + gps.longitude);
+        }
+        if (!data.isEmpty()) {
+
+            map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(data.get(0).latitude, data.get(0).longitude), 15));
+        }
     }
 
     private void addLines(List<GPSData> data)
     {
         // TODO: Add points.
         Log.d("MapActivity", "Adding lines");
+        if (data.isEmpty()){
+            Log.d("MapActivity", "Empty data");
+            return;
+        }
+
+        PolylineOptions polylineOptions = new PolylineOptions();
+        LatLng start = null;
+        LatLng end = null;
+
+        for (GPSData gps : data) {
+            LatLng position = new LatLng(gps.latitude, gps.longitude);
+            polylineOptions.add(position);
+            if (start == null) start = position;
+            end = position;
+        }
+
+        Polyline polyline = map.addPolyline(polylineOptions);
+        polyline.setColor(0xFFFF0000);
+
+        if (start != null && end != null) {
+            map.addMarker(new MarkerOptions().position(start).title("Start").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
+            map.addMarker(new MarkerOptions().position(end).title("End").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+        }
     }
 
     private void addHeatmap(List<GPSData> data)
     {
         // TODO: Add points.
-        Log.d("MapActivity", "Adding lines");
+        List<WeightedLatLng> points = new ArrayList<>();
+        for (GPSData gps : data) {
+            points.add(new WeightedLatLng(new LatLng(gps.latitude, gps.longitude), gps.speed));
+            Log.d("MapActivity", "Added heatmap point at Lat: " + gps.latitude + ", Lng: " + gps.longitude);
+        }
+        HeatmapTileProvider provider = new HeatmapTileProvider.Builder().weightedData(points).build();
+        map.addTileOverlay(new com.google.android.gms.maps.model.TileOverlayOptions().tileProvider(provider));
+
+
     }
 
     private List<GPSData> getData()

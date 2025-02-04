@@ -11,5 +11,9 @@ import androidx.room.Query;
 public interface GPSDataDao {
     @Query("SELECT * FROM gpsdata")
     List<GPSData> getFilteredData();
+    @Insert
+    void insertAll(GPSData... gpsData);
+    @Delete
+    void delete(GPSData gpsData);
 
 }
